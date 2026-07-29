@@ -1,0 +1,14 @@
+# Everything the image does not need. Without this the 56 MB ocr-output/ and
+# the whole .venv would be sent to the build daemon and baked in.
+.venv/
+__pycache__/
+*.pyc
+ocr-output/
+hidden-output/
+clean-output/
+parsed/
+predictions.jsonl
+*.log
+*.md
+uv.lock
+.git/

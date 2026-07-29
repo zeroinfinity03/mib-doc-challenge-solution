@@ -1,0 +1,11 @@
+# Pinned to exactly what the local run scored 123.72 with. paddleocr[all] pulls
+# in onnxruntime and rapidocr, which this pipeline never imports; leaving them
+# out keeps the image well under the 4 GiB limit.
+paddleocr==3.7.0
+paddlepaddle==3.3.1
+pymupdf==1.28.0
+numpy==2.3.5
+opencv-contrib-python==4.10.0.84
+shapely==2.1.2
+pyclipper==1.4.0
+Pillow==12.3.0
