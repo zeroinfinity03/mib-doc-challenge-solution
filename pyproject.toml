@@ -1,15 +1,15 @@
 [project]
-name = "solution"
-version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.11"
+name = "mib-doc-challenge"
+version = "0.2.0"
+description = "MIB document adjudication pipeline — five deterministic stages, CPU only, offline"
+requires-python = ">=3.11,<3.13"
 dependencies = [
-    "numpy>=1.24",
-    "onnxruntime>=1.27.0",
-    "paddleocr[all]>=3.7.0",
-    "paddlepaddle>=3.3.1",
-    "pillow>=12.3.0",
-    "pymupdf>=1.28.0",
-    "rapidocr>=3.9.2",
+    "rapidocr==3.9.2",
+    "onnxruntime==1.27.0",
+    "pymupdf==1.28.0",
+    "numpy>=2.0",
+    "opencv-python-headless>=4.10",
 ]
+
+[tool.uv]
+package = false

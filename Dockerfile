@@ -8,54 +8,40 @@
 #
 # Three of those flags shape everything below:
 #
-#   --network none   nothing may be downloaded at runtime. PaddleOCR normally
-#                    fetches its models on first use, so both are COPYed in and
-#                    passed by DIRECTORY (MIB_*_MODEL_DIR), not by name.
-#   --read-only      the filesystem is not writable. paddlex still wants a HOME
-#                    to scribble in, so HOME points at /tmp, the one writable
-#                    mount. All intermediates go to /tmp too (see run.sh).
-#   --cpus 4         parallelism is per-PDF, 3 workers at ~2 GiB each; the OCR
-#                    threads are pinned to 1 so the workers do not fight.
+#   --network none   nothing may be downloaded at runtime. RapidOCR fetches its
+#                    models on first use, so all three are COPYed in and passed
+#                    by explicit path (MIB_*_MODEL), never by name.
+#   --read-only      the filesystem is not writable. HOME points at /tmp, the
+#                    one writable mount, and every intermediate goes there too.
+#   --cpus 4         parallelism is per-PDF, 3 workers at ~0.5 GiB each; the
+#                    ONNX Runtime threads are pinned to 1 so they do not fight.
 #
-# Architecture is PINNED to linux/amd64 because the framework only supports it.
-# PaddlePaddle's own install guide is explicit:
-#   "The processor architecture is x86_64 (or called x64, Intel 64, AMD64).
-#    Currently, PaddlePaddle does not support arm64."
-#   https://www.paddlepaddle.org.cn/documentation/docs/en/install/index_en.html
-# Supported OS: Windows 10/11, Ubuntu 20.04/22.04/24.04, AlmaLinux 8, macOS.
-#
-# That matches what PyPI actually ships: paddlepaddle 3.3.1 (which PP-OCRv6
-# needs) has no linux-aarch64 wheel at all — 3.2.2 is the newest there — so an
-# unpinned build on an ARM host dies at
-#   ERROR: No matching distribution found for paddlepaddle==3.3.1
-#
-# The challenge never states which architecture it scores on. Pinned, an ARM
-# host still runs this under emulation; unpinned, it cannot build. Note that
-# macOS ARM works only because Python wheels are per-OS *and* per-arch —
-# macosx-arm64 exists, linux-aarch64 does not.
+# NO --platform PIN, and that is a deliberate change from the previous image.
+# The pipeline used to run PaddleOCR, and PaddlePaddle ships no linux-aarch64
+# wheel, which forced --platform=linux/amd64 and left an ARM judge running the
+# whole batch under emulation. onnxruntime publishes manylinux wheels for both
+# x86_64 and aarch64, so this image now builds and runs natively on either.
 
-FROM --platform=linux/amd64 python:3.12-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# libgomp1 is required by paddle; the rest is what PyMuPDF/OpenCV need to load.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libgomp1 libgl1 libglib2.0-0 \
+        libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# PP-OCRv6 medium detection + recognition, 59 MB + 73 MB. Well inside the
-# challenge's 250 MiB per-artifact and 1 GiB total limits.
-COPY models/PP-OCRv6_medium_det /opt/models/PP-OCRv6_medium_det
-COPY models/PP-OCRv6_medium_rec /opt/models/PP-OCRv6_medium_rec
+# PP-OCRv6 small detection + recognition + the mobile text-line classifier.
+# 30 MB all in, against the challenge's 250 MiB per-artifact and 1 GiB total.
+COPY models/ /opt/models/
 
-ENV MIB_DET_MODEL_DIR=/opt/models/PP-OCRv6_medium_det \
-    MIB_REC_MODEL_DIR=/opt/models/PP-OCRv6_medium_rec \
-    PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True \
-    PADDLE_PDX_PDF_RENDER_SCALE=2.78 \
+ENV MIB_DET_MODEL=/opt/models/PP-OCRv6_det_small.onnx \
+    MIB_REC_MODEL=/opt/models/PP-OCRv6_rec_small.onnx \
+    MIB_CLS_MODEL=/opt/models/ch_ppocr_mobile_v2.0_cls_mobile.onnx \
     OMP_NUM_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
     HOME=/tmp \
     PYTHONDONTWRITEBYTECODE=1 \

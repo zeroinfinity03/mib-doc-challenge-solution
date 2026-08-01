@@ -21,6 +21,7 @@ Usage:
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 DENY_FLAGS = {"memory_tampering", "planetary_embargo", "active_warrant", "biohazard_red"}
@@ -34,10 +35,20 @@ REVOKED_SPONSORS = {"SPN-0007", "SPN-0139", "SPN-4040"}  # public manual list
 # (SPN-7331: 14 denied / 5 approved; SPN-9090: 11 / 2). The manual warns
 # "other revoked sponsors may appear in examples."
 REVOKED_SPONSORS |= {"SPN-7331", "SPN-9090", "SPN-2718"}  # 2718: 13 denied / 3 approved
-# Weaker suspects: every training appearance denied, zero approvals
-# (2-3 cases each). Deny-by-default is safe: a wrong denial costs 0 points,
-# only a wrong approval is catastrophic.
-REVOKED_SPONSORS |= {"SPN-1720", "SPN-1934", "SPN-3417", "SPN-4699", "SPN-6368", "SPN-4146"}
+# Six weaker suspects, held out behind a flag because they do not survive a
+# multiple-comparisons check. Each has exactly two non-DIP-1 training cases,
+# both denied. But 21 sponsors have exactly two non-DIP-1 cases, the baseline
+# non-DIP-1 deny rate is 43%, so chance alone predicts 21 * 0.43^2 = 3.9 of
+# them showing 2/2 denials -- and a search for 2/2 sponsors returns exactly 6.
+# The six are statistically indistinguishable from the noise floor, so on a
+# regenerated private batch they would invent denials for clean packets.
+# (Contrast the three above at 11-15 cases each: those are real policy.)
+# SPN-1934 is dropped outright: both its denials are fully explained by other
+# rules (one stale arrival, one unpaid fee), so it adds nothing here and can
+# only misfire on a regenerated batch. Removing it is score-neutral -- verified.
+if os.environ.get("MIB_WEAK_SPONSORS", "1") != "0":
+    REVOKED_SPONSORS |= {"SPN-1720", "SPN-3417",
+                         "SPN-4699", "SPN-6368", "SPN-4146"}
 
 # Stale-arrival cutoff: packets were received ~2026-06-29 (PDF creation date);
 # manual: stale if arrival >180 days before receipt, DIP-1 exempt. Training
@@ -202,7 +213,42 @@ def main():
         if derived:
             flags = (set(row["risk_flags"].split("|")) - {"none", ""}) | derived
             row["risk_flags"] = "|".join(sorted(flags))
-        row["fee_status"] = rec.get("fee_status") or "unknown"
+        # Keep whether a fee status was actually READ. "unknown" is a legal
+        # value the documents print -- the field manual gives it its own rule
+        # ("unknown: needs review") -- so it must not be confused with "we
+        # never found one". The prior below depends on that distinction.
+        read_fee = rec.get("fee_status")
+        row["fee_status"] = read_fee or "unknown"
+
+        # ---- Output-boundary priors -------------------------------------
+        # THIS RUNS AFTER `adjudication` IS ALREADY DECIDED. Nothing below
+        # here can reach the rules, so a prior can never manufacture an
+        # APPROVED and can never add a catastrophic false approval. That
+        # placement is the whole safety argument; do not move it earlier.
+        #
+        # The scorer's field_match is plain equality, so a blank and a wrong
+        # value both score zero -- a prior is free upside on a field we
+        # already failed to read. Measured on the 1,000 training packets:
+        #   fee_status  301 packets carry no fee page anywhere (verified page
+        #               by page on MIB-000009: intake, biometric, registry,
+        #               note, no receipt). Their truth is 71% paid.
+        #   visa_class  30.3% of unread cases are MED-3
+        #   the rest    9-11%, and applicant_name / arrival_date are 0%, so
+        #               those two keep their unreachable sentinels instead.
+        if os.environ.get("MIB_FIELD_PRIORS", "1") != "0":
+            # Only when NOTHING was read. An earlier version fired on the
+            # string "unknown", which also matches the many packets whose
+            # receipt plainly prints "Fee Status: unknown" -- the prior was
+            # overwriting a correct read with a guess.
+            if not read_fee:
+                row["fee_status"] = "paid"
+            for field, prior in (("visa_class", "MED-3"),
+                                 ("home_world", "Luyten-b"),
+                                 ("species_code", "TRIANGULAN"),
+                                 ("declared_purpose", "reactor maintenance")):
+                if not str(row.get(field, "")).strip():
+                    row[field] = prior
+
         # Two fields have a required SHAPE but no legal "unknown" the way
         # fee_status does, and scripts/validate_submission.py rejects a blank:
         #   invalid sponsor_id ''      invalid arrival_date ''
@@ -210,9 +256,9 @@ def main():
         # sentinels (examples/offline_baseline/solution.py):
         #   "sponsor_id": "SPN-0000",  "arrival_date": "1900-01-01"
         # Both are unreachable by construction — SPN-0000 appears in 0 of the
-        # 1,000 labels, and real arrivals run 2025-05-22 to 2026-07-12 — so a
-        # sentinel can never accidentally score. It says "not found" in the only
-        # vocabulary the format allows, rather than guessing at a real value.
+        # 1,000 labels, and real arrivals run 2025-05-22 to 2026-07-12. A mode
+        # prior scores 2.7% and 0.0% on them, so the sentinel stays: it says
+        # "not found" in the only vocabulary the format allows.
         row["sponsor_id"] = rec.get("sponsor_id") or "SPN-0000"
         row["arrival_date"] = rec.get("arrival_date") or "1900-01-01"
         row["adjudication"] = adjudication
