@@ -9,14 +9,14 @@ The repository contains the `Dockerfile`, the five pipeline stages, the pinned
 
 ## Score
 
-**126.15 / 150** on the 1,000 labelled training packets, via
+**126.48 / 150** on the 1,000 labelled training packets, via
 `scripts/evaluate.py`:
 
 | section | score |
 |---|---|
-| Field extraction | 44.37 / 50 |
+| Field extraction | 44.69 / 50 |
 | Classification | 65.44 / 80 |
-| Calibration | 16.34 / 20 |
+| Calibration | 16.35 / 20 |
 | Missing-case penalty | −0.00 / 10 |
 | Catastrophic false approvals | 10 |
 

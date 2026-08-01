@@ -1,7 +1,7 @@
 # MIB Doc Challenge — Technical Memo
 
-**126.15 / 150** on the 1,000 labelled training packets: 44.37 extraction,
-65.44 classification, 16.34 calibration, no missing cases, 10 catastrophic
+**126.48 / 150** on the 1,000 labelled training packets: 44.69 extraction,
+65.44 classification, 16.35 calibration, no missing cases, 10 catastrophic
 false approvals. Five deterministic stages, CPU only, offline, no LLM.
 
 ## Approach
